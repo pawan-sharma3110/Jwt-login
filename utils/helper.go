@@ -15,13 +15,24 @@ func ParseJson(r *http.Request, payload any) error {
 		err := fmt.Errorf("enter valid paylod in request body ")
 		return err
 	}
+	err := json.NewDecoder(r.Body).Decode(payload)
+	if err != nil {
+		return fmt.Errorf("internal server error")
+
+	}
 	defer r.Body.Close()
-	return json.NewDecoder(r.Body).Decode(payload)
+	return nil
 }
 func WriteJson(w http.ResponseWriter, status int, res any) error {
-	w.Header().Set("Content-Type", "application/json") // Correct the content-type typo
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	return json.NewEncoder(w).Encode(res)
+
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return err
+	}
+
+	return nil
 }
 func WriteError(w http.ResponseWriter, status int, err error) {
 	WriteJson(w, status, map[string]string{"error": err.Error()})
@@ -35,28 +46,45 @@ func createUSerTable(db *sql.DB) error {
 		password TEXT NOT NULL,
 		created_at  TIMESTAMP
 )`
-	res, err := db.Exec(query)
+	_, err := db.Exec(query)
 	if err != nil {
 		log.Fatalf("Falied in to create user table :%v", err)
 		return err
 	}
-	if res != nil {
-		println("Table crated")
-	}
+
 	return nil
 }
-func IsertUser(db *sql.DB, w http.ResponseWriter, user model.User) (int, error) {
+func isUserExists(db *sql.DB, user model.User) (bool, error) {
+	var email string
+	query := `SELECT email_id FROM users WHERE email_id=$1`
+	err := db.QueryRow(query, user.EmailId).Scan(&email)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
+}
+func InsertUser(db *sql.DB, user model.User) (int, error) {
 	err := createUSerTable(db)
 	if err != nil {
-		http.Error(w, "Falied in to create user table", http.StatusInternalServerError)
+		return 0, fmt.Errorf("failed to create user table: %w", err)
+	}
+	exists, err := isUserExists(db, user)
+	if err != nil {
 		return 0, err
 	}
+	if exists {
+		return 0, fmt.Errorf("user already exists")
+	}
 	var userId int
-	query := `INSERT INTO users(first_name,mobile_no,email_id,password,created_at)VALUES($1,$2,$3,$4,$5)RETURNING user_id`
+	query := `INSERT INTO users(first_name, mobile_no, email_id, password, created_at) VALUES($1, $2, $3, $4, $5) RETURNING user_id`
 	err = db.QueryRow(query, user.FirstName, user.MobileNo, user.EmailId, user.Password, time.Now()).Scan(&userId)
 	if err != nil {
-		http.Error(w, "Falied to insert user into table", http.StatusInternalServerError)
-		return 0, err
+		return 0, fmt.Errorf("failed to insert user into table: %w", err)
 	}
 	return userId, nil
 }
