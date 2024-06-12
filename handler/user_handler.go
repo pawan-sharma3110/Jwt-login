@@ -37,7 +37,7 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 }
 func Login(w http.ResponseWriter, r *http.Request) {
 
-	db, err := db.DbIn() 
+	db, err := db.DbIn()
 	if err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, err)
 		return
@@ -49,5 +49,14 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		utils.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
-
+	token, err := utils.UserLogin(db, w, payload)
+	if err != nil {
+		// utils.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+	err = utils.WriteJson(w, http.StatusOK, map[string]string{"token": token})
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
 }

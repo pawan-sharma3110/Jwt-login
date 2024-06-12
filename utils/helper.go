@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -20,7 +21,7 @@ func ParseJson(r *http.Request, payload any) error {
 	}
 	err := json.NewDecoder(r.Body).Decode(payload)
 	if err != nil {
-		return fmt.Errorf("internal server error")
+		return fmt.Errorf("enter valid paylod in request body")
 
 	}
 	defer r.Body.Close()
@@ -103,8 +104,54 @@ func gernateHashPass(user model.User) (string, error) {
 	}
 	return string(hashPass), nil
 }
+func comparePasswords(hashedPassword string, plainPassword []byte) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), plainPassword)
+	return err == nil
+}
+func UserLogin(db *sql.DB, w http.ResponseWriter, payload model.User) (res string, err error) {
+	var user model.User
+	var jwtKey string = "authantication"
+	query := `SELECT email_id,password FROM users WHERE email_id=$1`
+	err = db.QueryRow(query, payload.EmailId).Scan(&user.EmailId, &user.Password)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			println(err)
+			err = errors.New("user not exists")
+			WriteError(w, http.StatusUnauthorized, err)
+			return "", err
+		}
+		println(err)
+		err = errors.New("intrnal server error")
+		WriteError(w, http.StatusInternalServerError, err)
+		return "", err
+	}
+	isValid := comparePasswords(user.Password, []byte(payload.Password))
+	if !isValid {
+		err = errors.New("user password dose not match")
+		WriteError(w, http.StatusBadRequest, err)
+		return "", err
+	}
+	expirationTime := time.Now().Add(5 * time.Minute) // Token valid for 5 minutes
+	claims := &model.Claims{
+		EmailID: payload.EmailId,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expirationTime.Unix(),
+			// Set token expiration time
+		},
+	}
 
-
-func UserLogin(db *sql.DB) {
-
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(jwtKey))
+	if err != nil {
+		err = errors.New("failed ot create jwt token")
+		WriteError(w, http.StatusInternalServerError, err)
+		return "", err
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:    payload.EmailId,
+		Value:   tokenString,
+		Expires: expirationTime,
+	})
+	println(isValid)
+	return tokenString, nil
 }
