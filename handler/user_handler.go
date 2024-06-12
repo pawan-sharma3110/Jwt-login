@@ -7,8 +7,10 @@ import (
 	"net/http"
 )
 
+// strings
+
 func RegisterUser(w http.ResponseWriter, r *http.Request) {
-	db, err := db.DbIn() // Ensure db.DbIn() returns a valid database connection
+	db, err := db.DbIn()
 	if err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, err)
 		return
@@ -32,4 +34,20 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.WriteJson(w, http.StatusCreated, map[string]int{"user_id": userId})
+}
+func Login(w http.ResponseWriter, r *http.Request) {
+
+	db, err := db.DbIn() 
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+	defer db.Close()
+
+	var payload model.User
+	if err := utils.ParseJson(r, &payload); err != nil {
+		utils.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+
 }

@@ -3,11 +3,14 @@ package utils
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"jwt/model"
 	"log"
 	"net/http"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func ParseJson(r *http.Request, payload any) error {
@@ -71,7 +74,7 @@ func isUserExists(db *sql.DB, user model.User) (bool, error) {
 func InsertUser(db *sql.DB, user model.User) (int, error) {
 	err := createUSerTable(db)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create user table: %w", err)
+		return 0, fmt.Errorf("failed to create user table: %v", err)
 	}
 	exists, err := isUserExists(db, user)
 	if err != nil {
@@ -80,11 +83,28 @@ func InsertUser(db *sql.DB, user model.User) (int, error) {
 	if exists {
 		return 0, fmt.Errorf("user already exists")
 	}
+	hashPass, err := gernateHashPass(user)
+	if err != nil {
+		return 0, err
+	}
 	var userId int
 	query := `INSERT INTO users(first_name, mobile_no, email_id, password, created_at) VALUES($1, $2, $3, $4, $5) RETURNING user_id`
-	err = db.QueryRow(query, user.FirstName, user.MobileNo, user.EmailId, user.Password, time.Now()).Scan(&userId)
+	err = db.QueryRow(query, user.FirstName, user.MobileNo, user.EmailId, hashPass, time.Now()).Scan(&userId)
 	if err != nil {
-		return 0, fmt.Errorf("failed to insert user into table: %w", err)
+		return 0, fmt.Errorf("failed to insert user into table: %v", err)
 	}
 	return userId, nil
+}
+func gernateHashPass(user model.User) (string, error) {
+	hashPass, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		err = errors.New("falied to convert password in hash")
+		return "", err
+	}
+	return string(hashPass), nil
+}
+
+
+func UserLogin(db *sql.DB) {
+
 }
